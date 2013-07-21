@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MMWEATHER>
+	<REPORT type="frc3">
+		<TOWN index="28367" sname="%D2%FE%EC%E5%ED%FC" latitude="57" longitude="65">
+			<FORECAST day="21" month="07" year="2013" hour="21" tod="3" predict="0" weekday="1">
+				<PHENOMENA cloudiness="0" precipitation="10" rpower="0" spower="0"/>
+				<PRESSURE max="745" min="743"/>
+				<TEMPERATURE max="20" min="18"/>
+				<WIND min="3" max="5" direction="0"/>
+				<RELWET max="90" min="88"/>
+				<HEAT min="18" max="20"/>
+			</FORECAST>
+			<FORECAST day="22" month="07" year="2013" hour="03" tod="0" predict="0" weekday="2">
+				<PHENOMENA cloudiness="0" precipitation="10" rpower="0" spower="0"/>
+				<PRESSURE max="745" min="743"/>
+				<TEMPERATURE max="17" min="15"/>
+				<WIND min="2" max="4" direction="0"/>
+				<RELWET max="92" min="90"/>
+				<HEAT min="15" max="17"/>
+			</FORECAST>
+			<FORECAST day="22" month="07" year="2013" hour="09" tod="1" predict="0" weekday="2">
+				<PHENOMENA cloudiness="0" precipitation="10" rpower="0" spower="0"/>
+				<PRESSURE max="745" min="743"/>
+				<TEMPERATURE max="19" min="17"/>
+				<WIND min="2" max="4" direction="1"/>
+				<RELWET max="81" min="79"/>
+				<HEAT min="17" max="19"/>
+			</FORECAST>
+			<FORECAST day="22" month="07" year="2013" hour="15" tod="2" predict="0" weekday="2">
+				<PHENOMENA cloudiness="1" precipitation="10" rpower="0" spower="0"/>
+				<PRESSURE max="744" min="742"/>
+				<TEMPERATURE max="23" min="21"/>
+				<WIND min="3" max="5" direction="1"/>
+				<RELWET max="67" min="65"/>
+				<HEAT min="20" max="22"/>
+			</FORECAST>
+		</TOWN>
+	</REPORT>
+</MMWEATHER>

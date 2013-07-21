@@ -1,6 +1,37 @@
 # -*- coding: utf-8 -*-
 '''
 Лицензия gismeteo.ru: http://www.gismeteo.ru/informers/offer/
+
+Использование (со встроенным кешированием):
+по известному ID населенного пункта в сервисе:
+>>> gmp = GisMeteoParser(town_id=28367)
+или по известному URL населенного пункта в сервисе:
+>>> gmp = GisMeteoParser(url='http://informer.gismeteo.ru/xml/28367.xml')
+или из файла XML-данных в файловой системе (собственный кеш)
+>>> gmp = GisMeteoParser(filename='cache.xml')
+или из объекта XML-данных:
+>>> gmp = GisMeteoParser(xml=xml_data)
+
+Далее:
+все сформированные данные, список (хотя обычно один город)
+>>> data = gmp.data
+или только первый город
+>>> data = gmp.first_data
+
+Далее все это можно использовать в шаблоне для вывода
+
+Есть не очень красивый пример использования в модуле custom_parser
+
+Можно определить собственный класс - наследник GisMeteoParser и сформировать 
+данные нужным вам образом. Для этого можно исследовать класс _Forecast 
+примерно так: _Forecast.__dict__ и выбрать все необходимые вам данные - 
+все они там есть. Если впоследствии кому-то понадобится более удобная форма -
+выведу все атрибуты как надо. Меня пока и так устраивает.
+
+Если нет необходимости использовать встроенный механизм кеширования, 
+то параметр use_builtin_cache надо выставить в False. Если же он используется,
+то можно задать cache_dir_path и cache_file_name, иначе файл кеша
+будет писаться в ту же директорию, откуда запускается скрипт.
 '''
 
 from xml.dom import minidom
@@ -25,7 +56,8 @@ class _Town(object):
     ATTR_KEYS = ['name', 'id', 'forecasts']
     
     def __init__(self, node):
-        #!!!!!добавить проверку на DOM
+        if not isinstance(node, minidom.Element):
+            raise Exception('Parameter `node` must be instance of minidom.Element')
         self.name = node.getAttribute('sname').encode(SOURCE_CODING)
         self.name = urllib.unquote(self.name).decode(SOURCE_CODING)
         self.id = node.getAttribute('index')
@@ -74,7 +106,8 @@ class _Forecast(object):
     
     
     def __init__(self, node):
-        #!!!!!добавить проверку на DOM
+        if not isinstance(node, minidom.Element):
+            raise Exception('Parameter `node` must be instance of minidom.Element')
         struct = _Forecast.NODES
         for a in _Forecast.ATTR_KEYS:
             setattr(self, a, node.getAttribute(a))
@@ -227,28 +260,122 @@ class _Forecast(object):
 
 
 class GisMeteoParser(object):
+    '''
+    Преобразует XML данные сервиса GisMeteo в объект вида:
+    [
+        {
+            name      : unicode    название населенного пунтка на русском
+            id        : int    ID города в сервисе
+            latitude  : float    широта населенного пунтка
+            longitude : float    долгота населенного пунтка
+            forecasts : [    прогнозы по периодам дня
+                day   : 
+                month :
+                year  :
+                hour  :
+                tod   :
+                predict:
+                weekday:
+                _chk     : Сортер
+                _picture : Изображение
+                _tod     : Время дня
+                _date    : Дата
+                _phenom  : Погода
+                _temp    : Температура
+                _wind    : Ветер
+                _press   : Давление
+                _wet     : Влажность
+                ...
+            ]
+        }
+        ...
+    ]
+    '''
     
-    CACHE_PATH = '.'
-    CACHE_FILE = 'gismeteo_cache.xml'
-    IMAGE_DIR_URL = ''
+    USE_BUILTIN_CACHE = True
+    SERVICE_URL = 'http://informer.gismeteo.ru/xml/'
+    CACHE_DIR_PATH = '.'
+    CACHE_FILE_NAME = 'gismeteo_cache.xml'
     
-    def __init__(self, filename=None, xml=None, url=None, town_id=28367, is_xml=False):
-        self.__is_xml = is_xml
-        self.__xml = None
+    def __init__(self, filename=None, xml=None, url=None, town_id=None, 
+                 use_builtin_cache=True, cache_dir_path=None, cache_file_name=None):
+        '''
+        Принимает полный путь файла XML-данных, или объект XML данных,
+        или URL сервиса для извлечения данных или ID населенного пункта
+        в сервисе для формирования URL и извлечения из сервиса.
+        
+        Если нет необходимости использовать встроенный механизм кеширования,
+        то параметр use_builtin_cache надо выставить в False. Если же он
+        используется, то можно задать cache_dir_path и cache_file_name,
+        иначе файл кеша  будет писаться в ту же директорию,
+        откуда запускается скрипт.
+        '''
         self.__data = []
+        self.__xml = None
+        self.USE_BUILTIN_CACHE = use_builtin_cache
+        if cache_dir_path:
+            self.CACHE_DIR_PATH = cache_dir_path
+        if cache_file_name:
+            self.CACHE_FILE_NAME = cache_file_name
+        # если определено имя XML файла данных для разбора
         if filename:
             self.__xml = minidom.parse(filename)
+        # если определен объект XML для разбора
         elif xml:
             self.__xml = xml
-        if not url: # для Тюмени по умолчанию
-            url = 'http://informer.gismeteo.ru/xml/%s_1.xml' % town_id
-        GisMeteoParser.CACHE_FILE = url.split('/')[-1]
-        self.__xml = minidom.parseString(self.__get_from_cache(url))
-        self.__xml_parse()
+        # если задан ID населенно пункта в сервисе - формируем URL
+        elif town_id:
+            url = '%s%s.xml' % (self.SERVICE_URL, town_id,)
+        if url:
+            self.CACHE_FILE_NAME = url.split('/')[-1]
+            self.__xml = minidom.parseString(self.__get_data(url))
+        if not self.__xml:
+            raise Exception('GisMeteoParser need data source: filename, url, XML-string or town ID.')
+        self.__data_parse()
+    
+    
+    @property
+    def data(self):
+        '''
+        Список всех населенных пунктов с прогнозами к ним
+        '''
+        return self.__data
+    
+    
+    @property
+    def first_data(self):
+        '''
+        Данные первого населенного пункта с прогнозами
+        '''
+        try:
+            return self.__data[0]
+        except IndexError:
+            return None
+    
+    
+    def __data_parse(self):
+        '''
+        Разбор XML-данных
+        '''
+        for t in self.__xml.getElementsByTagName('TOWN'):
+            self.__data.append( _Town(t) )
+    
+    
+    def __get_data(self, url):
+        '''
+        Выбирает XML-данные для разбора
+        '''
+        if self.USE_BUILTIN_CACHE:
+            return self.__get_from_cache(url)
+        else:
+            return self.__get_from_url(url)
     
     
     def __get_from_cache(self, url):
-        cache = os.path.join(GisMeteoParser.CACHE_PATH, GisMeteoParser.CACHE_FILE)
+        '''
+        Выбирает данные из встроенного кеша, если он есть и актуален
+        '''
+        cache = self.__cache_fullpath()
         now = time.mktime(datetime.datetime.now().timetuple())
         if os.path.isfile(cache) and (now - os.path.getmtime(cache) < 3600 * 6):
             return open(cache, 'r').read()
@@ -257,7 +384,9 @@ class GisMeteoParser(object):
     
     
     def __get_from_url(self, url):
-        cache = os.path.join(GisMeteoParser.CACHE_PATH, GisMeteoParser.CACHE_FILE)
+        '''
+        Выбирает данные с сервиса и кеширует их, если USE_BUILTIN_CACHE
+        '''
         data = None
         try:
             fh = urllib.urlopen(url)
@@ -265,65 +394,15 @@ class GisMeteoParser(object):
             fh.close()
         except IOError:
             pass
-        if data:
-            fh = open(cache, 'w')
+        if data and self.USE_BUILTIN_CACHE:
+            fh = open(self.__cache_fullpath(), 'w')
             fh.write(data)
             fh.close()
         return data
     
     
-    def __xml_parse(self):
-        for t in self.__xml.getElementsByTagName('TOWN'):
-            self.__data.append( _Town(t) )
-    
-    
-    def data(self):
-        return self.__data
-    
-    
-    def html_for_service(self):
-        town = self.__data[0]
-        u = [
-            u'<h2>Прогноз погоды для %s</h2>' % town.name,
-            u'<h4>Предоставлено <a href="http://www.gismeteo.ru/towns/',
-            u'%s.htm" title="Gismeteo.ru">Gismeteo.ru</a></h4>' % town.id
-        ]
-        for f in town.forecasts:
-            u.append(u'<hr/><div style="background: url(%s%s.png)' % (GisMeteoParser.IMAGE_DIR_URL, f._picture,))
-            u.append(u' no-repeat left top;padding-left:75px;line-height:150%;">')
-            u.append(u'<div style="font-weight:bold;font-size:110%%;">%s' % f._tod)
-            u.append(u', %s</div>' % f._date)
-            u.append(u'<div>%s</div>' % f._phenom)
-            u.append(u'<div><b>Температура:</b> %s</div>' % f._temp)
-            u.append(u'<div><b>Ветер:</b> %s</div>' % f._wind)
-            u.append(u'<div><b>Давление:</b> %s</div>' % f._press)
-            u.append(u'<div><b>Влажность:</b> %s</div></div>' % f._wet)
-        return u''.join(u)
-    
-    
-    def xml_for_service(self):
-        town = self.__data[0]
-        u = [
-            '<?xml version="1.0" encoding="utf-8"?>', '<data>'
-        ]
-        for f in town.forecasts:
-            u.append('    <row>')
-            for a in _Forecast.DATA:
-                if a == '_date':
-                    key = 'time'
-                else:
-                    key = a[1:]
-                u.append( '        <%s>%s</%s>' % ( key, getattr(f, a), key ) )
-            u.append('    </row>')
-        u.append('</data>')
-        return u'\n'.join(u)
-
-
-
-
-
-if __name__ == '__main__':
-    #gmp = GisMeteoParser(filename='28367_1.xml')
-    gmp = GisMeteoParser(url='http://informer.gismeteo.ru/xml/28367_1.xml')
-    #print gmp.html_for_service()
-    print gmp.xml_for_service()
+    def __cache_fullpath(self):
+        '''
+        Формирует путь к файлу из CACHE_DIR_PATH и CACHE_FILE_NAME
+        '''
+        return os.path.join(self.CACHE_DIR_PATH, self.CACHE_FILE_NAME)
