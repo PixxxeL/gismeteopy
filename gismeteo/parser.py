@@ -1,33 +1,38 @@
 # -*- coding: utf-8 -*-
+'''
+Лицензия gismeteo.ru: http://www.gismeteo.ru/informers/offer/
+'''
 
 from xml.dom import minidom
 import urllib, datetime, os, time
 
-from django.conf import settings
-
 import conditions as C
 
-'''
-@todo: 1. В классы добавить проверку на DOM
-       2. Вывод функций __fmt в _Forecast может быть не верным
-       3. Выбрать все объекты с их индексами и адаптировать скрипт под них
-'''
 
 
+# кодировка XML-документа данных
+SOURCE_CODING = 'cp1251'
 
 
 
 class _Town(object):
+    '''
+    Населенный пункт для которого предназначен прогноз погоды.
+    В конструктор принимает валидную XML-строку определенного формата.
+    '''
     
+    # перечень атрибутов узла населенного пункта
     ATTR_KEYS = ['name', 'id', 'forecasts']
     
     def __init__(self, node):
-        self.name = node.getAttribute('sname').encode('cp1251')
-        self.name = urllib.unquote(self.name).decode('cp1251')
+        #!!!!!добавить проверку на DOM
+        self.name = node.getAttribute('sname').encode(SOURCE_CODING)
+        self.name = urllib.unquote(self.name).decode(SOURCE_CODING)
         self.id = node.getAttribute('index')
         self.forecasts = []
         self.latitude = node.getAttribute('latitude')
         self.longitude = node.getAttribute('longitude')
+        # выбираем все прогнозы
         for f in node.getElementsByTagName('FORECAST'):
             self.forecasts.append( _Forecast(f) )
 
@@ -36,8 +41,13 @@ class _Town(object):
 
 
 class _Forecast(object):
+    '''
+    Прогноз погоды на определенный период дня (каждые 6 часов, от 0 до 3)
+    '''
     
+    # перечень атрибутов узла прогноза
     ATTR_KEYS = ['day', 'month', 'year', 'hour', 'tod', 'predict', 'weekday']
+    # перечень дочерних узлов и их атрибутов
     NODES = {
         'PHENOMENA':   ['cloudiness', 'precipitation'],
         'PRESSURE':    ['max', 'min'],
@@ -46,6 +56,7 @@ class _Forecast(object):
         'RELWET':      ['max', 'min'],
         'HEAT':        ['max', 'min'],
     }
+    # атрибуты полученных данных и их человекопонятное описание
     DATA = {
         '_chk':     u'Сортер',
         '_picture': u'Изображение',
@@ -58,10 +69,12 @@ class _Forecast(object):
         '_wet':     u'Влажность',
     }
     
+    # если не нужно два значения - берем среднее (True)
     TEMP_IS_AVERAGE = False
     
     
     def __init__(self, node):
+        #!!!!!добавить проверку на DOM
         struct = _Forecast.NODES
         for a in _Forecast.ATTR_KEYS:
             setattr(self, a, node.getAttribute(a))
@@ -74,17 +87,26 @@ class _Forecast(object):
     
     
     def __format(self):
+        '''
+        Форматирование всех атрибутов данных к нужному виду
+        '''
         for t in _Forecast.DATA.keys():
             getattr(self, '_Forecast__fmt%s' % t)()
     
     
     def __fmt_chk(self):
+        '''
+        Период дня вида YYYYMMDDX. Где X - conditions.TOD
+        '''
         setattr(
             self, '_chk', '%s%s%s%s' % (self.year, self.month, self.day, self.tod)
         )
     
     
     def __fmt_picture(self):
+        '''
+        Форматирование названия изображения
+        '''
         val = self.get('PHENOMENA.cloudiness')\
            or self.get('PHENOMENA.precipitation')\
            or False
@@ -92,11 +114,17 @@ class _Forecast(object):
     
     
     def __fmt_tod(self):
+        '''
+        Форматирование периода дня
+        '''
         tod = self.get('tod')
         setattr(self, '_tod', C.TOD.get(tod, ''))
     
     
     def __fmt_date(self):
+        '''
+        Форматирование даты
+        '''
         si = self.safe_int
         t = datetime.date.today()
         year = si(self.get('year')) or t.year
@@ -110,6 +138,9 @@ class _Forecast(object):
     
     
     def __fmt_phenom(self):
+        '''
+        Форматирование описания погоды
+        '''
         s = []
         prec = self.get('PHENOMENA.precipitation')
         prec = C.PRECIPITATION.get(prec)
@@ -121,6 +152,9 @@ class _Forecast(object):
             
     
     def __fmt_temp(self):
+        '''
+        Форматирование температуры воздуха
+        '''
         def add_plus(n): return u'%s%s' % ('+' if n > 0 else '', n)
         t = ''; tt = []; is_avg = _Forecast.TEMP_IS_AVERAGE 
         nmin = self.get('TEMPERATURE.min')
@@ -142,6 +176,9 @@ class _Forecast(object):
     
     
     def __fmt_wind(self):
+        '''
+        Форматирование направления и силы ветра
+        '''
         nmin = self.get('WIND.min')
         nmax = self.get('WIND.max')
         ndir = self.get('WIND.direction')
@@ -149,18 +186,27 @@ class _Forecast(object):
     
     
     def __fmt_press(self):
+        '''
+        Форматирование атмосферного давления
+        '''
         nmin = self.get('PRESSURE.min')
         nmax = self.get('PRESSURE.max')
         setattr(self, '_press', u'%s-%s мм.рт.ст.' % (nmin, nmax))
     
     
     def __fmt_wet(self):
+        '''
+        Форматирование показателей влажности
+        '''
         nmin = self.get('RELWET.min')
         nmax = self.get('RELWET.max')
         setattr(self, '_wet', u'%s-%s%%' % (nmin, nmax))
     
     
     def safe_int(self, n):
+        '''
+        Утилитарный метод приведения к целому
+        '''
         try:
             return int(n)
         except:
@@ -168,6 +214,9 @@ class _Forecast(object):
     
     
     def get(self, key):
+        '''
+        Утилитарный метод получения значения атрибута или пустой строки
+        '''
         try:
             return getattr(self, key)
         except:
@@ -179,9 +228,9 @@ class _Forecast(object):
 
 class GisMeteoParser(object):
     
-    CACHE_PATH = settings.GISMETEO_CACHE_FILEPATH
-    #CACHE_PATH = 'D:\\Python\\pro\\testwebpy\\media\\'
+    CACHE_PATH = '.'
     CACHE_FILE = 'gismeteo_cache.xml'
+    IMAGE_DIR_URL = ''
     
     def __init__(self, filename=None, xml=None, url=None, town_id=28367, is_xml=False):
         self.__is_xml = is_xml
@@ -218,7 +267,6 @@ class GisMeteoParser(object):
             pass
         if data:
             fh = open(cache, 'w')
-            print cache
             fh.write(data)
             fh.close()
         return data
@@ -241,7 +289,7 @@ class GisMeteoParser(object):
             u'%s.htm" title="Gismeteo.ru">Gismeteo.ru</a></h4>' % town.id
         ]
         for f in town.forecasts:
-            u.append(u'<hr/><div style="background: url(%simg/gismeteo/%s.png)' % (settings.STATIC_URL, f._picture,))
+            u.append(u'<hr/><div style="background: url(%s%s.png)' % (GisMeteoParser.IMAGE_DIR_URL, f._picture,))
             u.append(u' no-repeat left top;padding-left:75px;line-height:150%;">')
             u.append(u'<div style="font-weight:bold;font-size:110%%;">%s' % f._tod)
             u.append(u', %s</div>' % f._date)
