@@ -390,7 +390,7 @@ class GisMeteoParser(object):
         data = None
         try:
             req = urllib2.Request(url, None, {'User-agent': 'Mozilla/5.0'})
-            fh = urllib.urlopen(reg)
+            fh = urllib.urlopen(req)
             data = fh.read()
             fh.close()
         except IOError:
