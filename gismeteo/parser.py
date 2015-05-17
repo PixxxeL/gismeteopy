@@ -35,7 +35,7 @@
 '''
 
 from xml.dom import minidom
-import urllib, datetime, os, time
+import urllib2, datetime, os, time
 
 import conditions as C
 
@@ -59,7 +59,7 @@ class _Town(object):
         if not isinstance(node, minidom.Element):
             raise Exception('Parameter `node` must be instance of minidom.Element')
         self.name = node.getAttribute('sname').encode(SOURCE_CODING)
-        self.name = urllib.unquote(self.name).decode(SOURCE_CODING)
+        self.name = urllib2.unquote(self.name).decode(SOURCE_CODING)
         self.id = node.getAttribute('index')
         self.forecasts = []
         self.latitude = node.getAttribute('latitude')
@@ -389,7 +389,8 @@ class GisMeteoParser(object):
         '''
         data = None
         try:
-            fh = urllib.urlopen(url)
+            req = urllib2.Request(url, None, {'User-agent': 'Mozilla/5.0'})
+            fh = urllib.urlopen(reg)
             data = fh.read()
             fh.close()
         except IOError:
